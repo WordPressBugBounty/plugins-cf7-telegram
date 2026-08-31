@@ -19,16 +19,33 @@ class RestApi {
 		register_rest_field( Client::CPT_BOT, 'token', array(
 			'get_callback' => function( $object ) {
 				$bot = new Bot( $object['id'] );
-				return $bot->isTokenEmpty() ? Bot::getEmptyToken() : mb_substr( $bot->getToken(), -4 );
+				return $bot->isTokenEmpty() ? Bot::getEmptyToken() : substr( (string) $bot->getToken(), -4 );
 			},
 			'update_callback' => function( $updatedValue, $wp_post, $field, $request, $cpt ) {
-				$chat = new Bot( $wp_post->ID );
-				$chat->setToken( $updatedValue );
+				try {
+					$bot = new Bot( (int) $wp_post->ID );
+					$bot->replaceTokenIfValid( sanitize_text_field( (string) $updatedValue ) );
+				} catch ( \iTRON\cf7Telegram\Exceptions\Telegram $exception ) {
+					return new \WP_Error(
+						'rest_bot_token_invalid',
+						$exception->getMessage(),
+						[ 'status' => 400 ]
+					);
+				} catch ( \Throwable $exception ) {
+					return new \WP_Error(
+						'rest_bot_token_update_failed',
+						'Bot token could not be updated.',
+						[ 'status' => 500 ]
+					);
+				}
 				return true;
 			},
 			'schema' => array(
-				'description' => '',
-				'type'        => 'string'
+				'description' => 'Masked bot token, or replacement token when updating.',
+				'type'        => 'string',
+				'arg_options' => array(
+					'sanitize_callback' => 'sanitize_text_field',
+				),
 			),
 		) );
 
@@ -71,13 +88,25 @@ class RestApi {
 				return $bot->getChatID();
 			},
 			'update_callback' => function( $updatedValue, $wp_post, $field, $request, $cpt ) {
-				$chat = new Chat( $wp_post->ID );
-				$chat->setChatID( $updatedValue );
+				try {
+					$chat = new Chat( (int) $wp_post->ID );
+					$chat->setChatID( sanitize_text_field( (string) $updatedValue ) );
+					$chat->savePost();
+				} catch ( \Throwable $exception ) {
+					return new \WP_Error(
+						'rest_chat_id_update_failed',
+						'Chat ID could not be updated.',
+						[ 'status' => 500 ]
+					);
+				}
 				return true;
 			},
 			'schema' => array(
-				'description' => '',
-				'type'        => 'string'
+				'description' => 'Telegram chat ID.',
+				'type'        => 'string',
+				'arg_options' => array(
+					'sanitize_callback' => 'sanitize_text_field',
+				),
 			),
 		) );
 	}
